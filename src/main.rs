@@ -1,9 +1,11 @@
 use regex::Regex;
 use std::fs;
 
+#[derive(Copy, Clone)]
 struct Box {
     letter : char,
 }
+
 impl std::fmt::Display for Box {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "[{}]", self.letter)
@@ -25,7 +27,6 @@ impl std::fmt::Debug for Box {
     }
 }
 
-//implement partialeq and debug for MoveInstruction
 struct MoveInstruction {
     count: usize,
     from: usize,
@@ -75,6 +76,7 @@ fn parse_box_columns(rows: Vec<String>) -> Vec<Vec<Box>> {
                     None      => None
                 })
                 .map(|c| Box { letter: c })
+                .rev()
                 .collect()
         )
         .collect::<Vec<Vec<Box>>>();
@@ -114,37 +116,49 @@ fn parse_move_instructions(input: Vec<String>)
 }
 
 fn execute_instructions(mut box_stacks: Vec<Vec<Box>>, 
-                        move_instructions: Vec<MoveInstruction>) -> Vec<Vec<Box>> {
+                        move_instructions: Vec<MoveInstruction>,
+                        can_pickup_multi: bool) -> Vec<Vec<Box>> {
     move_instructions
         .iter()
         .for_each(|instruction| {
-            let boxes: Vec<Box> = (1..instruction.count).into_iter().filter_map(|_| box_stacks[instruction.from - 1].pop()).collect();
-            boxes.into_iter().rev().for_each(|b| box_stacks[instruction.to - 1].push(b));
+            let boxes: Vec<Box> = (0..instruction.count).into_iter().filter_map(|_| box_stacks[instruction.from - 1].pop()).collect();
+            println!("Moving from stack {} to stack {}", instruction.from, instruction.to);
+            boxes.iter().for_each(|b| println!("{}", b));
+
+            if can_pickup_multi {
+                boxes.into_iter().rev().for_each(|b| box_stacks[instruction.to - 1].push(b));
+            } else {
+                boxes.into_iter().for_each(|b| box_stacks[instruction.to - 1].push(b));
+            }
         });
 
     box_stacks
 }
 
+fn move_crates(input: String, can_pickup_multi: bool) -> Vec<Box> {
+    let parsed_crates = parse_existing_crates(input);
+
+    let box_cols = parse_box_columns(parsed_crates.0);
+    let instructions = parse_move_instructions(parsed_crates.1);
+
+    execute_instructions(box_cols, instructions.unwrap(), can_pickup_multi)
+        .into_iter()
+        .filter_map(|column_of_boxes| column_of_boxes.last().cloned())
+        .collect()
+}
+
 fn main() {
     let result = fs::read_to_string("input.txt")
         .map_err(|_| "Unable to read from file")
-        .map(parse_existing_crates)
-        .map(|r| {
-            let box_cols = parse_box_columns(r.0);
-            let instructions = parse_move_instructions(r.1);
-
-            let result = execute_instructions(box_cols, instructions.unwrap());
-
-            result
-        });
+        .map(|input| move_crates(input, false));
             
+    println!("FINAL RESULT: ");
     result
         .unwrap()
         .into_iter()
-        .for_each(|bc| { println!("{}", bc.last().or_else(|| Some(&Box { letter: '1' })).unwrap()); })
+        .for_each(|b| println!("{}", b));
 }
 
-// show me an example of a rust unit test
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,8 +212,7 @@ move 1 from 4 to 1";
 "[D] [S] [L] [J] [L] [G] [G] [F] [R]",
 "[G] [Z] [C] [H] [C] [R] [H] [P] [D]"].iter().map(|s| s.to_string()).collect();
 
-        // finish the expected for me
-        let expected = vec![
+        let expected: Vec<Vec<Box>> = vec![
             vec![Box { letter: 'B' }, Box { letter: 'S' }, Box { letter: 'J' }, Box { letter: 'Z' }, Box { letter: 'V' }, Box { letter: 'D' }, Box { letter: 'G' }],
             vec![Box { letter: 'P' }, Box { letter: 'V' }, Box { letter: 'G' }, Box { letter: 'M' }, Box { letter: 'S' }, Box { letter: 'Z' }],
             vec![Box { letter: 'F' }, Box { letter: 'Q' }, Box { letter: 'T' }, Box { letter: 'W' }, Box { letter: 'S' }, Box { letter: 'B' }, Box { letter: 'L' }, Box { letter: 'C' }],
@@ -209,9 +222,32 @@ move 1 from 4 to 1";
             vec![Box { letter: 'Q' }, Box { letter: 'S' }, Box { letter: 'D' }, Box { letter: 'J' }, Box { letter: 'R' }, Box { letter: 'T' }, Box { letter: 'G' }, Box { letter: 'H' }],
             vec![Box { letter: 'V' }, Box { letter: 'F' }, Box { letter: 'P' }],
             vec![Box { letter: 'J' }, Box { letter: 'T' }, Box { letter: 'S' }, Box { letter: 'R' }, Box { letter: 'D' }],
-        ];
+        ].into_iter().map(|b| b.into_iter().rev().collect()).collect();
 
         assert_eq!(expected, parse_box_columns(test_input))
+    }
+
+    #[test]
+    fn it_parses_and_executes() {
+        let test_input = "
+    [D]    
+[N] [C]    
+[Z] [M] [P]
+ 1   2   3 
+move 1 from 2 to 1
+move 3 from 1 to 3
+move 2 from 2 to 1
+move 1 from 1 to 2".to_owned();
+        
+        let result = move_crates(test_input);
+
+        let expected = vec![
+            Box { letter: 'C' },
+            Box { letter: 'M' },
+            Box { letter: 'Z' }
+        ];
+
+        assert_eq!(expected, result)
     }
 
     #[test]
